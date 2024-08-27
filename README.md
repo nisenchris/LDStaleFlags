@@ -4,7 +4,7 @@ LDStaleFlags is a Python tool for identifying and managing stale feature flags i
 
 ## Prerequisites
 
-- **Python 3.6+**
+- **Python**
 - **Git**
 - **LaunchDarkly API token**
 
@@ -40,6 +40,10 @@ Run the script to identify stale flags:
 python get_stale_flags.py
 ```
 
+## Disclaimer
+
+This code is provided on an as-is basis and is not officially supported by LaunchDarkly. Use at your own discretion.
+
 ## License
 
-Licensed under the MIT License.
+This project is licensed under the Apache License, Version 2.0. See the LICENSE.txt file for details.
