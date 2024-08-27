@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 import json
 
 # Load environment variables from .env file
-load_dotenv()
+load_dotenv(override=True)
 
 # Fetch environment variables
 api_token = os.getenv("LD_API_TOKEN")
@@ -14,6 +14,9 @@ environment_key = os.getenv("LD_ENVIRONMENT_KEY")
 # Check if variables are set
 if not api_token or not project_key or not environment_key:
     raise ValueError("One or more environment variables are not set.")
+
+print(f"Using project: {project_key}")
+print(f"Using environment: {environment_key}")
 
 # API request to get flag statuses
 url = f"https://app.launchdarkly.com/api/v2/flag-statuses/{project_key}/{environment_key}"
