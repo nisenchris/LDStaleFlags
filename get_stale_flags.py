@@ -3,6 +3,7 @@ import requests
 from dotenv import load_dotenv
 import json
 from datetime import datetime, timedelta, timezone
+import time
 
 # Load environment variables from .env file
 load_dotenv(override=True)
@@ -28,13 +29,21 @@ headers = {
     "Content-Type": "application/json"
 }
 
-# Function to fetch all feature flags with pagination
+# Function to fetch all feature flags with pagination and rate limiting handling
 def fetch_all_flags(project_key, api_token):
     flags = []
     url = f"{base_url}/api/v2/flags/{project_key}?limit=20"
     
     while url:
         response = requests.get(url, headers=headers)
+        
+        # Check if rate limit was exceeded
+        if response.status_code == 429:
+            retry_after = int(response.headers.get("Retry-After", 1))
+            print(f"Rate limit exceeded. Retrying after {retry_after} seconds...")
+            time.sleep(retry_after)
+            continue
+
         data = response.json()
         flags.extend(data['items'])
         next_link = data['_links'].get('next', {}).get('href')
@@ -42,16 +51,31 @@ def fetch_all_flags(project_key, api_token):
             url = f"{base_url}{next_link}"
         else:
             url = None
+
+        # Optional: Delay between requests to avoid hitting rate limits
+        time.sleep(1)
     
     return flags
 
 # Fetch all flags using pagination
 all_flags = fetch_all_flags(project_key, api_token)
 
-# API request to get flag statuses
+# API request to get flag statuses with rate limiting handling
+def get_flag_statuses(url):
+    while True:
+        response = requests.get(url, headers=headers)
+        
+        # Check if rate limit was exceeded
+        if response.status_code == 429:
+            retry_after = int(response.headers.get("Retry-After", 1))
+            print(f"Rate limit exceeded. Retrying after {retry_after} seconds...")
+            time.sleep(retry_after)
+            continue
+
+        return response.json()['items']
+
 statuses_url = f"https://app.launchdarkly.com/api/v2/flag-statuses/{project_key}/{environment_key}"
-statuses_response = requests.get(statuses_url, headers=headers)
-flag_statuses = statuses_response.json()['items']
+flag_statuses = get_flag_statuses(statuses_url)
 
 # Define the date threshold for flags older than 30 days (use timezone-aware datetime)
 date_threshold = datetime.now(timezone.utc) - timedelta(days=30)
