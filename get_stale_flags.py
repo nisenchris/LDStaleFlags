@@ -65,9 +65,6 @@ for flag in all_flags:
     flag_key = flag['key']
     status_info = status_map.get(flag_key)
 
-    # Debugging: Print flag information
-    print(f"Processing flag: {flag_key}, status: {status_info['name'] if status_info else 'No status'}, lastRequested: {status_info.get('lastRequested') if status_info else 'No lastRequested'}, is_temporary: {flag.get('temporary', False)}")
-
     if status_info:
         # Check if the flag is temporary
         is_temporary = flag.get('temporary', False)
@@ -78,13 +75,6 @@ for flag in all_flags:
         # Determine the relevant date to check (lastRequested or creationDate)
         last_requested_str = status_info.get('lastRequested') if status_info else None
         
-        # if last_requested_str:
-        #     last_requested = datetime.strptime(last_requested_str, '%Y-%m-%dT%H:%M:%S.%fZ')
-        #     last_requested = last_requested.replace(tzinfo=timezone.utc)  # Make it timezone-aware
-        # else:
-        #     creation_date = datetime.fromtimestamp(flag['creationDate'] / 1000, tz=timezone.utc)
-        #     last_requested = creation_date
-
         if last_requested_str:
             try:
                 # Try parsing with milliseconds
@@ -96,7 +86,6 @@ for flag in all_flags:
         else:
             creation_date = datetime.fromtimestamp(flag['creationDate'] / 1000, tz=timezone.utc)
             last_requested = creation_date
-
         
         # Apply filtering logic
         if is_temporary and (status in ['inactive', 'launched', 'unknown']) and last_requested < date_threshold:
@@ -111,3 +100,6 @@ for flag in all_flags:
 # Output the stale flags in JSON format
 output = {"stale_flags": stale_flags}
 print(json.dumps(output, indent=2))
+
+# Print the total count of stale flags
+print(f"Total stale flags: {len(stale_flags)}")
