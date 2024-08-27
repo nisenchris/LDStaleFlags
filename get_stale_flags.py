@@ -2,7 +2,7 @@ import os
 import requests
 from dotenv import load_dotenv
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Load environment variables from .env file
 load_dotenv(override=True)
@@ -19,23 +19,42 @@ if not api_token or not project_key or not environment_key:
 print(f"Using project: {project_key}")
 print(f"Using environment: {environment_key}")
 
-# API request to get all feature flags
-flags_url = f"https://app.launchdarkly.com/api/v2/flags/{project_key}"
+# Base URL for LaunchDarkly API
+base_url = "https://app.launchdarkly.com"
+
+# Define headers once to be reused
 headers = {
     "Authorization": f"{api_token}",
     "Content-Type": "application/json"
 }
 
-flags_response = requests.get(flags_url, headers=headers)
-all_flags = flags_response.json()['items']
+# Function to fetch all feature flags with pagination
+def fetch_all_flags(project_key, api_token):
+    flags = []
+    url = f"{base_url}/api/v2/flags/{project_key}?limit=20"
+    
+    while url:
+        response = requests.get(url, headers=headers)
+        data = response.json()
+        flags.extend(data['items'])
+        next_link = data['_links'].get('next', {}).get('href')
+        if next_link:
+            url = f"{base_url}{next_link}"
+        else:
+            url = None
+    
+    return flags
+
+# Fetch all flags using pagination
+all_flags = fetch_all_flags(project_key, api_token)
 
 # API request to get flag statuses
 statuses_url = f"https://app.launchdarkly.com/api/v2/flag-statuses/{project_key}/{environment_key}"
 statuses_response = requests.get(statuses_url, headers=headers)
 flag_statuses = statuses_response.json()['items']
 
-# Define the date threshold for flags older than 30 days
-date_threshold = datetime.utcnow() - timedelta(days=30)
+# Define the date threshold for flags older than 30 days (use timezone-aware datetime)
+date_threshold = datetime.now(timezone.utc) - timedelta(days=30)
 
 # Create a dictionary to map flag keys to their statuses
 status_map = {status['_links']['parent']['href'].split('/')[-1]: status for status in flag_statuses}
@@ -46,21 +65,46 @@ for flag in all_flags:
     flag_key = flag['key']
     status_info = status_map.get(flag_key)
 
+    # Debugging: Print flag information
+    print(f"Processing flag: {flag_key}, status: {status_info['name'] if status_info else 'No status'}, lastRequested: {status_info.get('lastRequested') if status_info else 'No lastRequested'}, is_temporary: {flag.get('temporary', False)}")
+
     if status_info:
         # Check if the flag is temporary
         is_temporary = flag.get('temporary', False)
+        
         # Get the status (inactive or launched)
-        status = status_info['name']
-        # Check the lastRequested date
-        last_requested = datetime.strptime(status_info['lastRequested'], '%Y-%m-%dT%H:%M:%SZ')
+        status = status_info['name'] if status_info else 'unknown'
+        
+        # Determine the relevant date to check (lastRequested or creationDate)
+        last_requested_str = status_info.get('lastRequested') if status_info else None
+        
+        # if last_requested_str:
+        #     last_requested = datetime.strptime(last_requested_str, '%Y-%m-%dT%H:%M:%S.%fZ')
+        #     last_requested = last_requested.replace(tzinfo=timezone.utc)  # Make it timezone-aware
+        # else:
+        #     creation_date = datetime.fromtimestamp(flag['creationDate'] / 1000, tz=timezone.utc)
+        #     last_requested = creation_date
 
+        if last_requested_str:
+            try:
+                # Try parsing with milliseconds
+                last_requested = datetime.strptime(last_requested_str, '%Y-%m-%dT%H:%M:%S.%fZ')
+            except ValueError:
+                # Fall back to parsing without milliseconds
+                last_requested = datetime.strptime(last_requested_str, '%Y-%m-%dT%H:%M:%S%z')
+            last_requested = last_requested.replace(tzinfo=timezone.utc)  # Make it timezone-aware
+        else:
+            creation_date = datetime.fromtimestamp(flag['creationDate'] / 1000, tz=timezone.utc)
+            last_requested = creation_date
+
+        
         # Apply filtering logic
-        if is_temporary and (status in ['inactive', 'launched']) and last_requested < date_threshold:
+        if is_temporary and (status in ['inactive', 'launched', 'unknown']) and last_requested < date_threshold:
             stale_flags.append({
                 "key": flag_key,
                 "name": flag['name'],
                 "status": status,
-                "lastRequested": status_info['lastRequested'],
+                "lastRequested": last_requested_str or "Never evaluated (using creation date)",
                 "temporary": is_temporary
             })
 
